@@ -1,0 +1,51 @@
+name: Notify OTA Update
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'ESP-32-OTA-Firmware-Update.bin'
+      - 'config.json'
+  workflow_dispatch:
+
+env:
+  FIRMWARE_BIN: ESP-32-OTA-Firmware-Update.bin
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify firmware binary exists
+        run: |
+          if [ ! -f "$FIRMWARE_BIN" ]; then
+            echo "ERROR: $FIRMWARE_BIN not found in repo root"
+            exit 1
+          fi
+          echo "Firmware binary found:"
+          ls -lh $FIRMWARE_BIN
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install paho-mqtt cryptography
+
+      - name: SHA-256 verify firmware
+        run: |
+          echo "Computing SHA-256 of $FIRMWARE_BIN..."
+          SHA256=$(sha256sum $FIRMWARE_BIN | awk '{print $1}')
+          echo "SHA-256: $SHA256"
+          echo "File size: $(stat -c%s $FIRMWARE_BIN) bytes"
+          echo "FIRMWARE_SHA256=$SHA256" >> $GITHUB_ENV
+
+      - name: Send MQTT OTA trigger
+        env:
+          FIRMWARE_AES_KEY: ${{ secrets.FIRMWARE_AES_KEY }}
+        run: python3 scripts/notify_ota_update.py
