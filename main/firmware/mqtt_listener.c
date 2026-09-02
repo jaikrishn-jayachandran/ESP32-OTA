@@ -4,7 +4,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_err.h"
-
+#include "esp_crt_bundle.h"
 #include "psa/crypto.h"
 
 #include "cJSON.h"
@@ -275,10 +275,10 @@ esp_err_t firmware_mqtt_init(const sys_config_t *sys_cfg) {
         .broker = {
             .address = {
                 .uri = mqtt_uri,
-                .transport = MQTT_TRANSPORT_OVER_SSL,
+                // REMOVED: .transport = MQTT_TRANSPORT_OVER_SSL (handled by mqtts:// prefix)
             },
             .verification = {
-                .use_global_ca_store = true,
+                .crt_bundle_attach = esp_crt_bundle_attach, // FIX: Attach standard x509 bundle
             },
         },
         .credentials = {
