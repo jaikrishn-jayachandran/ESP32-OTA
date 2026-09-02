@@ -259,7 +259,7 @@ static void process_ota_ping_payload(const char *data, int data_len) {
     // Create task for OTA to avoid blocking MQTT
     // The OTA task itself will acquire the mutex and reject if already in progress
     xTaskCreate(&firmware_ota_check_and_update_task, "ota_update_task", 
-                8192, NULL, 5, NULL);
+                8192, (void*)ota_params, 5, NULL);
 }
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, 
