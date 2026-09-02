@@ -1,5 +1,5 @@
 {
-    "version": "1.0.1",
+    "version": "1.1.1",
     "firmware_name": "Blink Application",
     "description": "3 blinks of 300ms v 200ms followed by a 2-second pause",
     "author": "Jaikrishn Jayachandran"
