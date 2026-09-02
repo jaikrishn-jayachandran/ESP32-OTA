@@ -15,38 +15,43 @@ env:
 jobs:
   notify:
     runs-on: ubuntu-latest
-    environment: Actions # Should be same as the name on your environment name
+    timeout-minutes: 3
+    environment: Actions
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: Verify firmware binary exists
+      - name: Verify Firmware Binary
         run: |
           if [ ! -f "$FIRMWARE_BIN" ]; then
-            echo "ERROR: $FIRMWARE_BIN not found in repo root"
+            echo "ERROR: $FIRMWARE_BIN not found in repository root"
             exit 1
           fi
           echo "Firmware binary found:"
-          ls -lh $FIRMWARE_BIN
+          ls -lh "$FIRMWARE_BIN"
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Cache Pip Dependencies
+        uses: actions/cache@v4
         with:
-          python-version: '3.11'
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-ota-${{ hashFiles('scripts/notify_ota_update.py') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-ota-
 
-      - name: Install dependencies
-        run: pip install paho-mqtt cryptography
-
-      - name: SHA-256 verify firmware
-        run: |
-          echo "Computing SHA-256 of $FIRMWARE_BIN..."
-          SHA256=$(sha256sum $FIRMWARE_BIN | awk '{print $1}')
-          echo "SHA-256: $SHA256"
-          echo "File size: $(stat -c%s $FIRMWARE_BIN) bytes"
-          echo "FIRMWARE_SHA256=$SHA256" >> $GITHUB_ENV
-
-      - name: Send MQTT OTA trigger
+      - name: Run OTA Notification Script
         env:
           FIRMWARE_AES_KEY: ${{ secrets.FIRMWARE_AES_KEY }}
-        run: python3 scripts/notify_ota_update.py
+        run: |
+          # Use pre-installed system Python 3 directly
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet paho-mqtt cryptography
+
+          # Compute SHA-256 and export to script environment
+          FIRMWARE_SHA256=$(sha256sum "$FIRMWARE_BIN" | awk '{print $1}')
+          export FIRMWARE_SHA256
+
+          # Execute Python script
+          python3 scripts/notify_ota_update.py

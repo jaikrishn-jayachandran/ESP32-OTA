@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "firmware/status_led.h"
 #include "firmware/wifi_manager.h"
+#include "esp_crt_bundle.h"
 
 static const char *TAG = "USER_SPACE";
 
@@ -28,7 +29,9 @@ static void perform_user_http_request(void) {
 
     esp_http_client_config_t config = {
         .url = "https://jsonplaceholder.typicode.com/todos/1",
-        .timeout_ms = 5000,
+        .timeout_ms = 10000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .user_agent = "ESP32-User-Space-Agent/1.0"
     };
     
     esp_http_client_handle_t client = esp_http_client_init(&config);
