@@ -63,7 +63,7 @@ void user_space_main(void *pvParameters) {
 
     while (1) {
         // Pattern: 510blinks of 300ms followed by a 2-second pause
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 2; i++) {
             status_led_set(true);
             vTaskDelay(pdMS_TO_TICKS(500));
             status_led_set(false);
