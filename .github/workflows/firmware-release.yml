@@ -15,6 +15,7 @@ env:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    environment: Actions # Should be same as the name on your environment name
 
     steps:
       - name: Checkout
