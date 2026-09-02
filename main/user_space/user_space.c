@@ -27,7 +27,7 @@ static void perform_user_http_request(void) {
     }
 
     esp_http_client_config_t config = {
-        .url = "http://worldtimeapi.org/api/ip",
+        .url = "https://jsonplaceholder.typicode.com/todos/1",
         .timeout_ms = 5000,
     };
     

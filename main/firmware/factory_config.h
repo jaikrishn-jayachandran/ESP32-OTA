@@ -2,7 +2,7 @@
 
 // This header file containts the factory configuration for the ESP32 firmware update on factory flash
 
-
+// ALL THE VARIABLES IN THIS SHOULD BE A SECRETE AND SHOULD NOT BE EXPOSED TO THE PUBLIC. THIS IS FOR YOUR REFERENCE ONLY. PLEASE CHANGE THE VALUES BEFORE USING IN PRODUCTION.
 
 #ifndef FACTORY_CONFIG_H
 #define FACTORY_CONFIG_H
@@ -11,8 +11,8 @@
 #define FACTORY_DEVICE_ID          "ESP32_DEVICE_001"
 #define FACTORY_DEVICE_FAMILY      "esp32-gen1"
 #define FACTORY_FIRMWARE_VERSION   "1.0.0"
-#define FACTORY_WIFI_SSID          "JK"
-#define FACTORY_WIFI_PASSWORD      ""
+#define FACTORY_WIFI_SSID          "Tinker Space"
+#define FACTORY_WIFI_PASSWORD      "123tinkerspace"
 #define FACTORY_GITHUB_REPO        "jaikrishn-jayachandran/ESP32-OTA"
 #define FACTORY_GITHUB_TOKEN       ""
 #define FACTORY_MQTT_HOST          "broker.hivemq.com"
