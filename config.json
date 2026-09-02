@@ -1,6 +1,9 @@
 {
-    "version": "1.0.2",
-    "firmware_name": "Blink Application",
-    "description": "",
-    "author": "Jaikrishn Jayachandran"
+  "version": "1.0.0",
+  "firmware_bin": "code.bin",
+  "mqtt_broker": "broker.hivemq.com",
+  "mqtt_port_tls": 8883,
+  "mqtt_port_tcp": 1883,
+  "mqtt_topic": "/esp32-ota/trigger/jaikrishn-jayachandran",
+  "device_family": ["esp32-gen1", "all"]
 }

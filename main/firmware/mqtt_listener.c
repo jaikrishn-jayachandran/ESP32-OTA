@@ -187,10 +187,11 @@ static void process_ota_ping_payload(const char *data, int data_len) {
     cJSON *version = cJSON_GetObjectItem(root, "version");
     cJSON *family = cJSON_GetObjectItem(root, "family");
     cJSON *sha256 = cJSON_GetObjectItem(root, "sha256");
+    cJSON *firmware_bin = cJSON_GetObjectItem(root, "firmware_bin");
 
     // Validate essential keys exist
     if (!cJSON_IsString(event) || !cJSON_IsString(version) || 
-        !cJSON_IsArray(family)) {
+        !cJSON_IsArray(family) ||  !cJSON_IsString(firmware_bin) || !cJSON_IsString(sha256)) {
         ESP_LOGE(TAG, "Malformed OTA ping JSON structure");
         cJSON_Delete(root);
         return;
@@ -222,12 +223,38 @@ static void process_ota_ping_payload(const char *data, int data_len) {
         return;
     }
 
-    // Set expected SHA-256 for verification
-    if (cJSON_IsString(sha256) && strlen(sha256->valuestring) == 64) {
-        firmware_ota_set_expected_sha256(sha256->valuestring);
+    if(strlen(sha256->valuestring) != 64) {
+        ESP_LOGE(TAG, "Invalid SHA-256 length in OTA ping");
+        cJSON_Delete(root);
+        return;
+    }
+
+    if (strcmp(version->valuestring, cached_cfg.current_version) == 0) {
+        ESP_LOGI(TAG, "Firmware already up-to-date (version %s). Ignoring.",
+                 version->valuestring);
+        cJSON_Delete(root);
+        return;
     }
 
     ESP_LOGI(TAG, "OTA Update Ping VALID! Version: %s", version->valuestring);
+    cJSON_Delete(root);
+
+
+    ota_task_params_t *ota_params = malloc(sizeof(ota_task_params_t));
+    if(ota_params == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for OTA task parameters");
+        cJSON_Delete(root);
+        return;
+    }
+
+    strncpy(ota_params->firmware_bin, firmware_bin->valuestring, sizeof(ota_params->firmware_bin) - 1);
+    strncpy(ota_params->version, version->valuestring, sizeof(ota_params->version) - 1);
+    strncpy(ota_params->sha256, sha256->valuestring, sizeof(ota_params->sha256) - 1);
+
+    ota_params->firmware_bin[sizeof(ota_params->firmware_bin) - 1] = '\0';
+    ota_params->version[sizeof(ota_params->version) - 1] = '\0';
+    ota_params->sha256[sizeof(ota_params->sha256) - 1] = '\0';
+
     cJSON_Delete(root);
 
     // Create task for OTA to avoid blocking MQTT

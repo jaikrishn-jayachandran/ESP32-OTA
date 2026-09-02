@@ -10,17 +10,11 @@
 
 static const char *TAG = "USER_SPACE";
 
-/**
- * 1. Dedicated Function for Modifying NVS Values for Future Updates
- */
 void user_space_nvs_update_hook(void) {
     ESP_LOGI(TAG, "Executing User Space NVS Migration Hook...");
     
 }
 
-/**
- * Helper function demonstrating user space making an HTTP request over shared Wi-Fi
- */
 static void perform_user_http_request(void) {
     if (!wifi_manager_is_connected()) {
         ESP_LOGW(TAG, "Wi-Fi unavailable for user space request.");
@@ -50,9 +44,6 @@ static void perform_user_http_request(void) {
     esp_http_client_cleanup(client);
 }
 
-/**
- * 2. Dedicated Task Function (Business Logic)
- */
 void user_space_main(void *pvParameters) {
     (void)pvParameters; // Suppress unused parameter compiler warning
 
@@ -70,12 +61,12 @@ void user_space_main(void *pvParameters) {
             vTaskDelay(pdMS_TO_TICKS(350));
         }
 
-        ESP_LOGI(TAG, "User Space Application running smoothly... Cycle: %" PRIu32, ++loop_counter);
+        // ESP_LOGI(TAG, "User Space Application running smoothly... Cycle: %" PRIu32, ++loop_counter);
 
         // Every 5 cycles, send an HTTP request using the shared Wi-Fi interface
-        if (loop_counter % 5 == 0) {
-            perform_user_http_request();
-        }
+        // if (loop_counter % 5 == 0) {
+        //     perform_user_http_request();
+        // }
 
         // 2-second pause before repeating pattern
         vTaskDelay(pdMS_TO_TICKS(2000));

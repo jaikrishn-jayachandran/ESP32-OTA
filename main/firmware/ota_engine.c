@@ -13,6 +13,9 @@
 #include "nvs_manager.h"
 #include "esp_crt_bundle.h"
 #include "psa/crypto.h"
+#include "factory_config.h"
+#include "mqtt_listener.h"
+
 
 static const char *TAG = "FW_OTA";
 static sys_config_t ota_cfg;
@@ -20,8 +23,8 @@ static SemaphoreHandle_t ota_mutex = NULL;
 static ota_state_t ota_state = OTA_STATE_IDLE;
 static char expected_sha256[65] = {0};
 
-#define FIRMWARE_BIN_NAME "ESP-32-OTA-Firmware-Update.bin"
-#define MAX_URL_LENGTH 512
+
+#define MAX_URL_LENGTH 1024
 #define MAX_VERSION_LENGTH 32
 #define CONFIG_JSON_FILENAME "config.json"
 #define SHA256_CHUNK_SIZE 4096
@@ -253,12 +256,6 @@ static esp_err_t fetch_config_version(char **version) {
     return err;
 }
 
-static void build_binary_url(char *url, size_t url_len) {
-    snprintf(url, url_len,
-             "https://raw.githubusercontent.com/%s/main/%s",
-             ota_cfg.github_repo, FIRMWARE_BIN_NAME);
-}
-
 esp_err_t firmware_ota_start_download(const char *bin_url) {
     if (bin_url == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -275,6 +272,14 @@ esp_err_t firmware_ota_start_download(const char *bin_url) {
         .buffer_size_tx = 4096,
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
+
+
+    if(strlen(ota_cfg.github_token) > 0) {
+        ota_client_config.auth_type = HTTP_AUTH_TYPE_BASIC;
+        ota_client_config.username = ota_cfg.github_token;
+        ota_client_config.password = "x-oauth-basic";
+        ESP_LOGI(TAG, "Using GitHub token for authentication");
+    }
 
     esp_https_ota_config_t ota_config = {
         .http_config = &ota_client_config,
@@ -331,7 +336,7 @@ esp_err_t firmware_ota_start_download(const char *bin_url) {
 
 void firmware_ota_check_and_update_task(void *param) {
     esp_err_t result = ESP_OK;
-    char *remote_version = NULL;
+    ota_task_params_t *ota_params = (ota_task_params_t *)param;
 
     if (firmware_ota_acquire() != ESP_OK) {
         ESP_LOGW(TAG, "Cannot start OTA: another OTA operation is in progress");
@@ -347,39 +352,67 @@ void firmware_ota_check_and_update_task(void *param) {
         goto cleanup;
     }
 
-    result = fetch_config_version(&remote_version);
-    if (result != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to fetch config from GitHub");
-        goto cleanup;
-    }
+    if(ota_params != NULL){
+        ESP_LOGI(TAG, "Using parameters from MQTT:");
+        ESP_LOGI(TAG, "  Version: %s", ota_params->version);
+        ESP_LOGI(TAG, "  URL:     %s", ota_params->firmware_bin);
+        ESP_LOGI(TAG, "  SHA256:  %s", ota_params->sha256);
+        
+        firmware_ota_set_expected_sha256(ota_params->sha256);
 
-    if (strcmp(remote_version, ota_cfg.current_version) == 0) {
-        ESP_LOGI(TAG, "Version match: %s. No update needed.", ota_cfg.current_version);
-        goto cleanup;
-    }
 
-    ESP_LOGI(TAG, "Version mismatch!");
-    ESP_LOGI(TAG, "Current: %s | Remote: %s", ota_cfg.current_version, remote_version);
+        firmware_nvs_stage_str("ver", ota_params->version);
 
-    if (strlen(expected_sha256) > 0) {
-        ESP_LOGI(TAG, "Expected SHA-256: %s", expected_sha256);
-    }
+        char bin_url[MAX_URL_LENGTH];
+        snprintf(bin_url, sizeof(bin_url), "https://raw.githubusercontent.com/%s/main/%s",ota_cfg.github_repo, ota_params->firmware_bin);
 
-    ESP_LOGI(TAG, "Proceeding with OTA update...");
+        ESP_LOGI(TAG, "Download URL: %s", bin_url);
 
-    firmware_nvs_stage_str("ver", remote_version);
+        result = firmware_ota_start_download(bin_url);
+        if(result != ESP_OK) {
+            firmware_nvs_discard_stage();
+        }
+    }else{
+        char *remote_version = NULL;
+    
+        result = fetch_config_version(&remote_version);
+        if (result != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to fetch config from GitHub");
+            goto cleanup;
+        }
 
-    char bin_url[MAX_URL_LENGTH];
-    build_binary_url(bin_url, sizeof(bin_url));
+        if (strcmp(remote_version, ota_cfg.current_version) == 0) {
+            ESP_LOGI(TAG, "Version match: %s. No update needed.", ota_cfg.current_version);
+            goto cleanup;
+        }
 
-    result = firmware_ota_start_download(bin_url);
+        ESP_LOGI(TAG, "Version mismatch!");
+        ESP_LOGI(TAG, "Current: %s | Remote: %s", ota_cfg.current_version, remote_version);
 
-    if (result != ESP_OK) {
-        firmware_nvs_discard_stage();
+        if (strlen(expected_sha256) > 0) {
+            ESP_LOGI(TAG, "Expected SHA-256: %s", expected_sha256);
+        }
+
+        ESP_LOGI(TAG, "Proceeding with OTA update...");
+
+        firmware_nvs_stage_str("ver", remote_version);
+
+        char bin_url[MAX_URL_LENGTH];
+        snprintf(bin_url, sizeof(bin_url), "https://raw.githubusercontent.com/%s/main/%s",ota_cfg.github_repo, ota_params->firmware_bin);
+
+        ESP_LOGI(TAG, "Download URL: %s", bin_url);
+
+
+        result = firmware_ota_start_download(bin_url);
+
+        if (result != ESP_OK) {
+            firmware_nvs_discard_stage();
+        }
+        free(remote_version);
     }
 
 cleanup:
-    free(remote_version);
+    if (ota_params) free(ota_params);
     memset(expected_sha256, 0, sizeof(expected_sha256));
 
     ota_state = (result == ESP_OK) ? OTA_STATE_SUCCESS : OTA_STATE_FAILED;
