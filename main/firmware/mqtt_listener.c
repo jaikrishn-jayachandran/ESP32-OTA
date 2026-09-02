@@ -46,11 +46,9 @@ static esp_err_t decrypt_payload(const uint8_t *encrypted_data,
     }
 
     const uint8_t *iv = encrypted_data;
-    const uint8_t *tag = encrypted_data + AES_GCM_IV_LENGTH;
-    const uint8_t *ciphertext =
-        encrypted_data + AES_GCM_IV_LENGTH + AES_GCM_TAG_LENGTH;
-    const size_t ciphertext_len =
-        encrypted_len - AES_GCM_IV_LENGTH - AES_GCM_TAG_LENGTH;
+    const uint8_t *ciphertext = encrypted_data + AES_GCM_IV_LENGTH;
+    const uint8_t *tag = encrypted_data + encrypted_len - AES_GCM_TAG_LENGTH;
+    const size_t ciphertext_len = encrypted_len - AES_GCM_IV_LENGTH - AES_GCM_TAG_LENGTH;
 
     uint8_t *output = malloc(ciphertext_len + 1);
     if (output == NULL) {

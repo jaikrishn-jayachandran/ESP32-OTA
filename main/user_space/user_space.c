@@ -30,7 +30,10 @@ static void perform_user_http_request(void) {
     esp_http_client_config_t config = {
         .url = "https://jsonplaceholder.typicode.com/todos/1",
         .timeout_ms = 10000,
-        .crt_bundle_attach = esp_crt_bundle_attach,
+        .skip_cert_common_name_check = true,
+        .crt_bundle_attach = NULL,    
+        .cert_pem = NULL,
+        .use_global_ca_store = false,
         .user_agent = "ESP32-User-Space-Agent/1.0"
     };
     
