@@ -6,11 +6,10 @@
 
 #include <stdbool.h>
 
-
 typedef struct {
-    char firmware_bin[512];
-    char version[32];
-    char sha256[65];
+    char *firmware_bin;
+    char *version;
+    char *sha256;
 } ota_task_params_t;
 
 esp_err_t firmware_mqtt_init(const sys_config_t *cfg);

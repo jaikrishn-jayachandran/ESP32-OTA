@@ -237,7 +237,6 @@ static void process_ota_ping_payload(const char *data, int data_len) {
     }
 
     ESP_LOGI(TAG, "OTA Update Ping VALID! Version: %s", version->valuestring);
-    cJSON_Delete(root);
 
 
     ota_task_params_t *ota_params = malloc(sizeof(ota_task_params_t));
