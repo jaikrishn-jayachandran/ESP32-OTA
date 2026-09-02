@@ -334,90 +334,64 @@ esp_err_t firmware_ota_start_download(const char *bin_url) {
     return ESP_OK;
 }
 
-void firmware_ota_check_and_update_task(void *param) {
+void firmware_ota_check_and_update_task(void *param)
+{
     esp_err_t result = ESP_OK;
     ota_task_params_t *ota_params = (ota_task_params_t *)param;
 
     if (firmware_ota_acquire() != ESP_OK) {
         ESP_LOGW(TAG, "Cannot start OTA: another OTA operation is in progress");
+        if (ota_params) free(ota_params);
         vTaskDelete(NULL);
         return;
     }
 
     ota_state = OTA_STATE_RUNNING;
 
+    // Load configuration from NVS (needed for github_repo and staging)
     result = firmware_nvs_get_config(&ota_cfg);
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "Failed to load configuration: %s", esp_err_to_name(result));
         goto cleanup;
     }
 
-    if(ota_params != NULL){
-        ESP_LOGI(TAG, "Using parameters from MQTT:");
-        ESP_LOGI(TAG, "  Version: %s", ota_params->version);
-        ESP_LOGI(TAG, "  URL:     %s", ota_params->firmware_bin);
-        ESP_LOGI(TAG, "  SHA256:  %s", ota_params->sha256);
-        
-        firmware_ota_set_expected_sha256(ota_params->sha256);
+    // Must have parameters from MQTT
+    if (ota_params == NULL) {
+        ESP_LOGE(TAG, "OTA task started without parameters");
+        result = ESP_ERR_INVALID_ARG;
+        goto cleanup;
+    }
 
+    ESP_LOGI(TAG, "Starting OTA from MQTT parameters:");
+    ESP_LOGI(TAG, "  Version: %s", ota_params->version);
+    ESP_LOGI(TAG, "  Firmware file: %s", ota_params->firmware_bin);
+    ESP_LOGI(TAG, "  SHA256: %s", ota_params->sha256);
 
-        firmware_nvs_stage_str("ver", ota_params->version);
+    // Set expected SHA-256 for verification
+    firmware_ota_set_expected_sha256(ota_params->sha256);
 
-        char bin_url[MAX_URL_LENGTH];
-        snprintf(bin_url, sizeof(bin_url), "https://raw.githubusercontent.com/%s/main/%s",ota_cfg.github_repo, ota_params->firmware_bin);
+    // Stage the new version in NVS
+    firmware_nvs_stage_str("ver", ota_params->version);
 
-        ESP_LOGI(TAG, "Download URL: %s", bin_url);
+    // Build the full download URL
+    char bin_url[MAX_URL_LENGTH];
+    snprintf(bin_url, sizeof(bin_url),
+             "https://raw.githubusercontent.com/%s/main/%s",
+             ota_cfg.github_repo, ota_params->firmware_bin);
 
-        result = firmware_ota_start_download(bin_url);
-        if(result != ESP_OK) {
-            firmware_nvs_discard_stage();
-        }
-    }else{
-        char *remote_version = NULL;
-    
-        result = fetch_config_version(&remote_version);
-        if (result != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to fetch config from GitHub");
-            goto cleanup;
-        }
+    ESP_LOGI(TAG, "Download URL: %s", bin_url);
 
-        if (strcmp(remote_version, ota_cfg.current_version) == 0) {
-            ESP_LOGI(TAG, "Version match: %s. No update needed.", ota_cfg.current_version);
-            goto cleanup;
-        }
-
-        ESP_LOGI(TAG, "Version mismatch!");
-        ESP_LOGI(TAG, "Current: %s | Remote: %s", ota_cfg.current_version, remote_version);
-
-        if (strlen(expected_sha256) > 0) {
-            ESP_LOGI(TAG, "Expected SHA-256: %s", expected_sha256);
-        }
-
-        ESP_LOGI(TAG, "Proceeding with OTA update...");
-
-        firmware_nvs_stage_str("ver", remote_version);
-
-        char bin_url[MAX_URL_LENGTH];
-        snprintf(bin_url, sizeof(bin_url), "https://raw.githubusercontent.com/%s/main/%s",ota_cfg.github_repo, ota_params->firmware_bin);
-
-        ESP_LOGI(TAG, "Download URL: %s", bin_url);
-
-
-        result = firmware_ota_start_download(bin_url);
-
-        if (result != ESP_OK) {
-            firmware_nvs_discard_stage();
-        }
-        free(remote_version);
+    // Perform direct download and OTA
+    result = firmware_ota_start_download(bin_url);
+    if (result != ESP_OK) {
+        firmware_nvs_discard_stage();
     }
 
 cleanup:
     if (ota_params) free(ota_params);
     memset(expected_sha256, 0, sizeof(expected_sha256));
-
     ota_state = (result == ESP_OK) ? OTA_STATE_SUCCESS : OTA_STATE_FAILED;
     firmware_ota_release();
-
     ESP_LOGI(TAG, "OTA task finished: %s", esp_err_to_name(result));
     vTaskDelete(NULL);
 }
