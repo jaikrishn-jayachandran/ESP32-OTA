@@ -154,6 +154,20 @@ static void process_ota_ping_payload(const char *data, int data_len) {
     // Decrypt the payload first
     uint8_t *plaintext = NULL;
     size_t plaintext_len = 0;
+
+    ESP_LOGI(TAG, "Encrypted payload length: %d", data_len);
+
+    if (data_len > 0) {
+        char hex_str[65] = {0};
+        for (int i = 0; i < data_len && i < 16; i++) {
+            sprintf(hex_str + i*2, "%02x", (uint8_t)data[i]);
+        }
+        ESP_LOGI(TAG, "Payload first 16 bytes: %s", hex_str);
+    }
+
+    ESP_LOGI(TAG, "AES key first 4 bytes: %02x %02x %02x %02x",
+             cached_cfg.aes_key[0], cached_cfg.aes_key[1],
+             cached_cfg.aes_key[2], cached_cfg.aes_key[3]);
     
     esp_err_t decrypt_err = decrypt_payload((const uint8_t *)data, data_len,
                                             &plaintext, &plaintext_len);
