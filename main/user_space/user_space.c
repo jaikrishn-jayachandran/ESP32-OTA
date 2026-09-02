@@ -56,12 +56,12 @@ void user_space_main(void *pvParameters) {
     uint32_t loop_counter = 0;
 
     while (1) {
-        // Pattern: 5 blinks of 300ms followed by a 2-second pause
-        for (int i = 0; i < 10; i++) {
+        // Pattern: 510blinks of 300ms followed by a 2-second pause
+        for (int i = 0; i < 3; i++) {
             status_led_set(true);
-            vTaskDelay(pdMS_TO_TICKS(150));
+            vTaskDelay(pdMS_TO_TICKS(300));
             status_led_set(false);
-            vTaskDelay(pdMS_TO_TICKS(150));
+            vTaskDelay(pdMS_TO_TICKS(200));
         }
 
         ESP_LOGI(TAG, "User Space Application running smoothly... Cycle: %" PRIu32, ++loop_counter);
