@@ -222,7 +222,7 @@ void app_main(void) {
     obtain_time();
 
     initialize_sntp();
-    if (!wait_for_time_sync(10000)) {
+    if (!wait_for_time_sync(20000)) {
         ESP_LOGW(TAG, "Time synchronization failed – HTTPS may not work");
     } else {
         ESP_LOGI(TAG, "System time synchronized");
