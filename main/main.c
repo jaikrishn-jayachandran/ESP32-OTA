@@ -1,5 +1,9 @@
 #include "esp_log.h"
 #include "esp_sntp.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "cJSON.h"
+#include <string.h>
 #include "firmware/nvs_manager.h"
 #include "firmware/wifi_manager.h"
 #include "firmware/mqtt_listener.h"
@@ -68,6 +72,129 @@ static bool wait_for_time_sync(uint32_t timeout_ms)
     return true;
 }
 
+static void config_update_check_task(void *param)
+{
+    ESP_LOGI(TAG, "Checking for configuration updates...");
+
+    sys_config_t current_cfg;
+    if (firmware_nvs_get_config(&current_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read current config");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // Build URL
+    char config_url[256];
+    snprintf(config_url, sizeof(config_url),
+             "https://raw.githubusercontent.com/%s/main/config.json",
+             current_cfg.github_repo);
+    ESP_LOGI(TAG, "Fetching config from: %s", config_url);
+
+    // HTTP request
+    esp_http_client_config_t http_cfg = {
+        .url = config_url,
+        .method = HTTP_METHOD_GET,
+        .timeout_ms = 10000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to init HTTP client");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    esp_http_client_set_header(client, "User-Agent", "ESP32-Config-Checker");
+    esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open HTTP: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    int content_length = esp_http_client_fetch_headers(client);
+    if (content_length <= 0) {
+        ESP_LOGE(TAG, "Failed to fetch headers");
+        esp_http_client_cleanup(client);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    char *response = malloc(content_length + 1);
+    if (response == NULL) {
+        ESP_LOGE(TAG, "Memory allocation failed");
+        esp_http_client_cleanup(client);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    int read_len = esp_http_client_read_response(client, response, content_length);
+    response[read_len] = '\0';
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (status != 200 || read_len <= 0) {
+        ESP_LOGE(TAG, "Failed to fetch config.json (status %d)", status);
+        free(response);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // Parse JSON
+    cJSON *root = cJSON_Parse(response);
+    free(response);
+    if (root == NULL) {
+        ESP_LOGE(TAG, "Failed to parse config.json");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    cJSON *mqtt_broker = cJSON_GetObjectItem(root, "mqtt_broker");
+    cJSON *mqtt_topic  = cJSON_GetObjectItem(root, "mqtt_topic");
+    cJSON *family      = cJSON_GetObjectItem(root, "device_family");
+
+    if (!cJSON_IsString(mqtt_broker) || !cJSON_IsString(mqtt_topic) || !cJSON_IsArray(family)) {
+        ESP_LOGE(TAG, "config.json missing fields");
+        cJSON_Delete(root);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    bool changed = false;
+    if (strcmp(mqtt_broker->valuestring, current_cfg.mqtt_host) != 0) changed = true;
+    if (strcmp(mqtt_topic->valuestring, current_cfg.mqtt_topic) != 0) changed = true;
+    cJSON *first_family = cJSON_GetArrayItem(family, 0);
+    if (cJSON_IsString(first_family)) {
+        if (strcmp(first_family->valuestring, current_cfg.device_family) != 0) changed = true;
+    }
+
+    if (!changed) {
+        ESP_LOGI(TAG, "Config is up-to-date.");
+        cJSON_Delete(root);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Config changes detected, updating NVS...");
+    strncpy(current_cfg.mqtt_host, mqtt_broker->valuestring, sizeof(current_cfg.mqtt_host) - 1);
+    strncpy(current_cfg.mqtt_topic, mqtt_topic->valuestring, sizeof(current_cfg.mqtt_topic) - 1);
+    if (cJSON_IsString(first_family)) {
+        strncpy(current_cfg.device_family, first_family->valuestring, sizeof(current_cfg.device_family) - 1);
+    }
+    cJSON_Delete(root);
+
+    if (firmware_nvs_set_config(&current_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update NVS");
+    } else {
+        ESP_LOGI(TAG, "Config updated, rebooting...");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        esp_restart();
+    }
+    vTaskDelete(NULL);
+}
+
+
 void app_main(void) {
     ESP_LOGI(TAG, "=== Initializing System Core ===");
 
@@ -83,12 +210,15 @@ void app_main(void) {
 
     // 4. Connect to Wi-Fi using NVS Credentials
     ESP_LOGI(TAG, "Connecting to Wi-Fi network: %s", sys_cfg.wifi_ssid);
-    ESP_LOGI(TAG, "Connecting to Wi-Fi network: %s", sys_cfg.wifi_ssid);
     esp_err_t wifi_status = wifi_manager_init(&sys_cfg);
 
     if (wifi_status != ESP_OK) {
         ESP_LOGI(TAG, "Wi-Fi connection failed. Entering Factory Default LED blink loop...");
+        status_led_factory_blink_blocking();
+        abort();
     }
+
+
     obtain_time();
 
     initialize_sntp();
@@ -98,22 +228,13 @@ void app_main(void) {
         ESP_LOGI(TAG, "System time synchronized");
     }
 
-    if (wifi_status != ESP_OK) {
-        ESP_LOGE(TAG, "Wi-Fi connection failed. Entering Factory Default LED blink loop...");
-        status_led_factory_blink_blocking();
-        abort();
-    }
-
     // 5. Execute User Space NVS Migration Hook
     user_space_nvs_update_hook();
 
-    // 6. Startup OTA Check (Pull Event) - Execute only once
-    ESP_LOGI(TAG, "Performing startup OTA check...");
-    xTaskCreate(&firmware_ota_check_and_update_task, "startup_ota_check",
-                8192, NULL, 5, NULL);
 
-    // Give startup OTA a brief window, then proceed
-    vTaskDelay(pdMS_TO_TICKS(5000));
+    ESP_LOGI(TAG, "Checking for updates...");
+    xTaskCreate(&config_update_check_task, "config_check", 8192, NULL, 5, NULL);
+    vTaskDelay(pdMS_TO_TICKS(5000)); // Allow config check to complete before proceeding
 
     // 7. Spawn Background MQTT OTA Listener Task
     ESP_LOGI(TAG, "Starting background MQTT listener service...");

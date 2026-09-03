@@ -53,22 +53,9 @@ void user_space_main(void *pvParameters) {
     uint32_t loop_counter = 0;
 
     while (1) {
-        // Pattern: 510blinks of 300ms followed by a 2-second pause
-        for (int i = 0; i < 10; i++) {
-            status_led_set(true);
-            vTaskDelay(pdMS_TO_TICKS(500));
-            status_led_set(false);
-            vTaskDelay(pdMS_TO_TICKS(350));
-        }
-
-        // ESP_LOGI(TAG, "User Space Application running smoothly... Cycle: %" PRIu32, ++loop_counter);
-
-        // Every 5 cycles, send an HTTP request using the shared Wi-Fi interface
-        // if (loop_counter % 5 == 0) {
-        //     perform_user_http_request();
-        // }
-
-        // 2-second pause before repeating pattern
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        status_led_set(true);
+        vTaskDelay(pdMS_TO_TICKS(300));
+        status_led_set(false);
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 }
