@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "firmware_bin": "code.bin",
   "mqtt_broker": "broker.hivemq.com",
   "mqtt_port_tls": 8883,
