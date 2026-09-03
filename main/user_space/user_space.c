@@ -53,9 +53,14 @@ void user_space_main(void *pvParameters) {
     uint32_t loop_counter = 0;
 
     while (1) {
-        status_led_set(true);
-        vTaskDelay(pdMS_TO_TICKS(300));
-        status_led_set(false);
-        vTaskDelay(pdMS_TO_TICKS(300));
+
+        for(int i=0; i<3; i++){
+            status_led_set(true);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            status_led_set(false);
+            vTaskDelay(pdMS_TO_TICKS(300));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(2000)); // Wait for 2 seconds before next iteration
     }
 }
